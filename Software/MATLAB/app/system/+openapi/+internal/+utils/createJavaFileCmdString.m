@@ -15,6 +15,10 @@ function cmdStr = createJavaFileCmdString(classpath, configurationFile, options)
     cmdStr = cmdStr + " --config " + '"' + configurationFile + '"';
 
     if isfield(options, "additionalArguments")
-        cmdStr = cmdStr + " " + options.additionalArguments;
+        % Sanitize additionalArguments to avoid shell metacharacters
+        safe = openapi.internal.utils.sanitizeCliArgs(options.additionalArguments);
+        if strlength(safe) > 0
+            cmdStr = cmdStr + " " + safe;
+        end
     end
 end

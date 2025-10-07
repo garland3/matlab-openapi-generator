@@ -42,8 +42,12 @@ function manifest = getManifest(groupId, artifactId, webopts, verbose, options)
             manifest(ctr).version = string(allPages(n).response.docs(m).v);
             downloadURL = options.baseDownloadURL + join(groupIdFields, "/");
             downloadURL = downloadURL + "/" + artifactId + "/" + manifest(ctr).version + "/" + artifactId + "-" + manifest(ctr).version;
-            manifest(ctr).jarURL = downloadURL + ".jar"; % Assume a jar and md5 file exist for all entries
-            manifest(ctr).md5URL = downloadURL + ".md5";
+            manifest(ctr).jarURL = downloadURL + ".jar"; % Artifact
+            % Preferred checksums
+            manifest(ctr).sha256URL = downloadURL + ".jar.sha256";
+            manifest(ctr).sha1URL   = downloadURL + ".jar.sha1";
+            % Legacy/compat (not used for security-critical verification)
+            manifest(ctr).md5URL    = downloadURL + ".jar.md5";
             ctr = ctr + 1;
         end
     end

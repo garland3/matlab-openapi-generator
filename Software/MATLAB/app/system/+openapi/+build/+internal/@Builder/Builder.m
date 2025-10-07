@@ -173,9 +173,12 @@ classdef (Abstract) Builder < openapi.build.Object
 
                 cmdStr = cmdStr + obj.buildGlobalPropertiesCLIEntry();
 
-                if strlength(obj.additionalArguments) > 0
-                   cmdStr = cmdStr + " " + obj.additionalArguments;
-                end
+                     if strlength(obj.additionalArguments) > 0
+                         safeArgs = openapi.internal.utils.sanitizeCliArgs(obj.additionalArguments);
+                         if strlength(safeArgs) > 0
+                              cmdStr = cmdStr + " " + safeArgs;
+                         end
+                     end
             end
 
             obj.dispLog(['Building client, executing command:', newline, '  ', char(cmdStr), newline]);

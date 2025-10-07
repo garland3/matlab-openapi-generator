@@ -8,10 +8,6 @@ classdef Application < dynamicprops
     end    
     properties (Access=private)
         routes cell
-
-        currentIndex
-        currentRes
-        currentReq
     end
 
     methods
@@ -63,37 +59,54 @@ classdef Application < dynamicprops
             % HANDLEREQUEST fully handles the request based on the
             % Application configuration.
 
-            % Initialize all default values for a new request
-            app.currentIndex = 0;
-            app.currentReq = mws.Request(s);
-            app.currentReq.Application = app;
-            app.currentRes = mws.Response();
+            % Initialize per-request state as locals to avoid shared mutable state
+            currentIndex = 0;
+            req = mws.Request(s);
+            req.Application = app;
+            res = mws.Response();
+
+            % Nested function to iterate routes using local state
+            function nextLocal()
+                % Split off query parameters
+                p = split(s.Path,"?");
+                % Remove trailing slashes
+                p = strip(p(1),"right","/");
+                % Add request method
+                p = upper(s.Method) + " " + p;
+
+                for i = currentIndex+1:length(app.routes)
+                    currentIndex = i;
+                    route = app.routes{i}{1};
+                    match = regexp(p,route,"names");
+                    if ~isempty(match)
+                        % Add matched params to request
+                        req.AddParams(match);
+                        % Invoke handler with req/res and a continuation
+                        feval(app.routes{i}{2}, req, res, @nextLocal);
+                        return
+                    end
+                end
+                % No match
+                res.SendStatus(404);
+            end
+
             % If anything fails here, return a 500 error
-            try 
-                % Call next to start going through the routes. Next may
-                % call itself recursively to achieve a whole chain of
-                % function with middleware being called
-                app.next(s)
-                % When all the functions have been called, return the final
-                % respsone 
-                response = app.currentRes.GetStruct();
-            catch ME 
+            try
+                nextLocal();
+                % Return final response
+                response = res.GetStruct();
+            catch ME
                 % Print the error report to internal logging
                 fprintf(2,ME.getReport()+"\n");
-                % In Debug mode return the error stack to the client
                 if app.Debug
-                    response = mws.Response().Status(500).Json( ...
-                        struct('error',ME) ...
-                    ).GetStruct();
+                    response = mws.Response().Status(500).Json(struct('error',ME)).GetStruct();
                 else
-                    % As Http Response returna a generic internal server error
                     response = struct( ...
                         ApiVersion=[1 0 0], ...
                         HttpCode=500, ...
                         HttpMessage='Internal Server Error');
                 end
             end
-
         end
     end
 
@@ -129,43 +142,6 @@ classdef Application < dynamicprops
             % Add $ to not allow anything else after the path (other than
             % query parameters, which will be omitted when matching later).
             path = path + "$";
-        end
-        function next(app,s)
-            % (Continue) going through the routes to see what needs to
-            % be called
-            
-            % The current Path has to be preprocessed just once, do
-            % this before the loop.
-                        
-            % Split off query parameters
-            p = split(s.Path,"?");
-            % Remove trailing slashes
-            p = strip(p(1),"right","/");
-            % Add request method
-            p = upper(s.Method) + " " + p;
-            
-            % Use regexp to see whether there is a match (and if
-            % there is to also immediately parse route parameters
-            % into a struct).
-            for i = app.currentIndex+1:length(app.routes)
-                app.currentIndex = i;
-
-                route = app.routes{i}{1};
-
-                match = regexp(p,route,"names");
-                
-                if ~isempty(match)
-                    % If matched, call the function
-                    app.currentReq.AddParams(match);
-                    feval(app.routes{i}{2},app.currentReq,app.currentRes,@()app.next(s));
-                    % After that, return. Never just continue here, if
-                    % the user's code want us to continue it should
-                    % explcitly call next()
-                    return
-                end
-            end
-            % If this point is reached there was no match, in that case return a 404
-            app.currentRes.SendStatus(404);
         end        
     end
 end
