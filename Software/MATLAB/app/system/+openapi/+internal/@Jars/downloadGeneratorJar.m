@@ -22,8 +22,8 @@ function jarPath = downloadGeneratorJar(version, options)
     for n = 1:numel(manifest)
         if strcmp(version, manifest(n).version)
             jarURL = manifest(n).jarURL;
-            % TODO check the download's md5
-            % md5URL = manifest(n).md5URL;
+            sha256URL = manifest(n).sha256URL;
+            sha1URL = manifest(n).sha1URL;
             break;
         end
     end
@@ -45,6 +45,48 @@ function jarPath = downloadGeneratorJar(version, options)
                 fprintf("Created directory: %s\n", options.destinationDir);
             end
         end
+        % Download JAR
         websave(jarPath, jarURL, options.weboptions);
+        
+        % Attempt to verify checksum using SHA-256 first, then SHA-1 as fallback
+        verified = false;
+        expected = "";
+        try
+            if strlength(sha256URL) > 0
+                expected = strtrim(string(webread(sha256URL, options.weboptions))); %#ok<*WEBRD>
+                % Some checksum files contain format like "<hex>  <filename>"
+                expected = extractBefore(expected, regexp(expected, "\s", 'once'));
+                actual = openapi.internal.utils.computeChecksum(jarPath, "SHA-256");
+                verified = strcmpi(expected, actual);
+            end
+        catch
+            % ignore and try SHA-1
+        end
+        if ~verified
+            try
+                if strlength(sha1URL) > 0
+                    expected = strtrim(string(webread(sha1URL, options.weboptions)));
+                    expected = extractBefore(expected, regexp(expected, "\s", 'once'));
+                    actual = openapi.internal.utils.computeChecksum(jarPath, "SHA-1");
+                    verified = strcmpi(expected, actual);
+                end
+            catch
+                % ignore; will error below if still not verified
+            end
+        end
+
+        if ~verified
+            if options.verbose
+                fprintf(2, "Checksum verification failed for %s. Expected: %s\n", jarPath, expected);
+            end
+            if isfile(jarPath)
+                delete(jarPath);
+            end
+            error("Checksum verification failed for downloaded JAR %s", jarURL);
+        else
+            if options.verbose
+                fprintf("Verified checksum for %s\n", jarPath);
+            end
+        end
     end
 end
